@@ -227,6 +227,16 @@ footer{border-top:1px solid var(--line);padding:40px 0;font-size:13px;color:var(
 footer .wrap{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:center}
 footer b{color:var(--ink);font-family:var(--display);font-size:17px}
 
+.pay{border:0;padding:0;background:transparent;max-width:min(92vw,420px);width:100%;color:var(--ink)}
+.pay::backdrop{background:rgba(14,26,18,.55)}
+.pay form{background:#fff;border-radius:var(--r);padding:26px 24px 22px;box-shadow:0 30px 60px -20px rgba(0,0,0,.45)}
+.pay h3{font-family:Fraunces,Georgia,serif;font-size:24px;margin:0 0 4px}
+.pay .p-sub{color:var(--muted);font-size:14px;margin:0 0 16px}
+.pay .p-total{display:flex;justify-content:space-between;align-items:baseline;margin:6px 0 14px;font-weight:700}
+.pay .p-total b{font-size:22px}
+.pay .p-note{font-size:12px;color:var(--muted);margin:10px 0 0;text-align:center}
+.pay .p-sb{display:inline-block;background:var(--gold);color:var(--ink);font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;padding:4px 10px;border-radius:99px;margin-bottom:10px}
+.pay .p-cancel{width:100%;margin-top:8px;padding:12px;font-weight:600;color:var(--muted);border-radius:14px}
 .toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,120px);background:var(--ink);color:#fff;padding:14px 22px;border-radius:16px;font-size:14px;z-index:99;max-width:min(92vw,460px);text-align:center;box-shadow:0 20px 40px -10px rgba(0,0,0,.5);opacity:0;pointer-events:none;transition:transform .5s var(--ease),opacity .4s}
 .toast.show{transform:translate(-50%,0);opacity:1}
 
@@ -428,6 +438,19 @@ footer b{color:var(--ink);font-family:var(--display);font-size:17px}
   </div>
 </footer>
 
+<dialog class="pay" id="pay" aria-labelledby="payTitle">
+  <form id="payForm" method="dialog" novalidate>
+    <span class="p-sb" id="paySb" hidden>Sandbox test mode</span>
+    <h3 id="payTitle">Order</h3>
+    <p class="p-sub" id="paySub"></p>
+    <div class="field"><label for="payQty">Quantity</label><input id="payQty" type="number" min="1" max="20" value="1" inputmode="numeric"></div>
+    <div class="field"><label for="payEmail">Your email (for your receipt)</label><input id="payEmail" type="email" autocomplete="email" placeholder="you@example.com"></div>
+    <div class="p-total"><span>Total</span><b id="payTotal"></b></div>
+    <button class="btn-give" id="payGo" type="submit">Continue to secure checkout</button>
+    <button class="p-cancel" id="payCancel" type="button">Cancel</button>
+    <p class="p-note" id="payNote">Card details are entered on WiPay's secure page, never on this site.</p>
+  </form>
+</dialog>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
@@ -443,12 +466,24 @@ const CONFIG = {
   daysLeft: 60,                                // TODO: campaign length
   currency: "$",
   paypalGivingUrl: "#",                        // TODO: paste your PayPal Giving Fund donate link
+  wipay: {                                     // WiPay Caribbean checkout for the "Made in Darliston" cards
+    enabled: true,
+    environment: "sandbox",                    // "sandbox" for testing, "live" when you go live
+    accountNumber: "1234567890",               // sandbox test account; replace with your live WiPay account number
+    countryCode: "JM",                         // WiPay platform: JM, TT, BB, GD, GY
+    currency: "JMD",
+    feeStructure: "customer_pay",              // or "merchant_absorb" / "split"
+    origin: "DarlistonPrimary",
+    responseUrl: ""                            // leave blank to return to this page; must be a public https URL (set it when testing from a local file)
+    // NOTE: the WiPay API key is NOT stored here. It is only for verifying payments on a server.
+  },
   orderContact: { email:"", whatsapp:"" },     // TODO: where buyers send orders (email and/or WhatsApp number with country code, e.g. 18765551234)
   market: [
-    {name:"Fresh Local Fruit",  desc:"Seasonal mangoes, bananas, and more, picked and packed locally.", price:"", bg:"#F1EFE4", icon:"fruit"},
-    {name:"Home-Baked Cookies", desc:"Batches baked by parents and teachers, perfect for sharing.",      price:"", bg:"#E1F2E7", icon:"cookie"},
-    {name:"Student Art",        desc:"Original drawings and paintings made by Darliston's students.",    price:"", bg:"#FFF3C2", icon:"art"},
-    {name:"Handmade Crafts",    desc:"Cards, bracelets, and keepsakes made with care by our community.", price:"", bg:"#E1F2E7", icon:"craft"}
+    /* TODO: placeholder prices, set your real ones */
+    {name:"Fresh Local Fruit",  desc:"Seasonal mangoes, bananas, and more, picked and packed locally.", price:"J$1,500", amount:1500, bg:"#F1EFE4", icon:"fruit"},
+    {name:"Home-Baked Cookies", desc:"Batches baked by parents and teachers, perfect for sharing.",      price:"J$1,000", amount:1000, bg:"#E1F2E7", icon:"cookie"},
+    {name:"Student Art",        desc:"Original drawings and paintings made by Darliston's students.",    price:"J$3,000", amount:3000, bg:"#FFF3C2", icon:"art"},
+    {name:"Handmade Crafts",    desc:"Cards, bracelets, and keepsakes made with care by our community.", price:"J$2,000", amount:2000, bg:"#E1F2E7", icon:"craft"}
   ],
   taxText: "Your gift may be tax-deductible to the extent allowed by law. A receipt is sent after checkout. Confirm exact deductibility with your tax advisor.",
   amounts: [
@@ -518,11 +553,12 @@ $("#mGrid").innerHTML = CONFIG.market.map((m,i) => `
       <h3>${m.name}</h3>
       ${m.price ? `<span class="m-price">${m.price}</span>` : ""}
       <p>${m.desc}</p>
-      <button type="button" class="m-btn" data-i="${i}">Ask to order</button>
+      <button type="button" class="m-btn" data-i="${i}">${CONFIG.wipay.enabled && m.amount ? "Buy now" : "Ask to order"}</button>
     </div>
   </article>`).join("");
 document.querySelectorAll(".m-btn").forEach(b => b.onclick = () => {
   const m = CONFIG.market[+b.dataset.i], c = CONFIG.orderContact;
+  if (CONFIG.wipay.enabled && m.amount) return openPay(m);
   const msg = `Hi! I'd like to order: ${m.name}. Please let me know how to pay and pick up. (Darliston Primary fundraiser)`;
   if (c.whatsapp) return window.open(`https://wa.me/${c.whatsapp}?text=${encodeURIComponent(msg)}`, "_blank", "noopener");
   if (c.email) return location.href = `mailto:${c.email}?subject=${encodeURIComponent("Order: " + m.name)}&body=${encodeURIComponent(msg)}`;
@@ -582,6 +618,57 @@ setTimeout(() => {
   count($("#pLeft"), CONFIG.daysLeft, false);
   if (!CONFIG.donors) $("#pDonors").textContent = "Be the first";
 }, 700);
+
+/* WiPay Caribbean checkout (hosted page; card data never touches this site) */
+const payDlg = $("#pay");
+let payItem = null;
+const money = n => "J$" + n.toLocaleString("en-US", {minimumFractionDigits:2, maximumFractionDigits:2});
+function payTotal(){ const q = Math.max(1, Math.min(20, parseInt($("#payQty").value,10) || 1)); return {q, total: Math.round(payItem.amount * q * 100) / 100}; }
+function openPay(m){
+  const w = CONFIG.wipay; payItem = m;
+  $("#payTitle").textContent = m.name;
+  $("#paySub").textContent = "Every sale supports " + CONFIG.projectInline + ".";
+  $("#paySb").hidden = w.environment !== "sandbox";
+  $("#payNote").textContent = w.environment === "sandbox"
+    ? "Test mode: no real money moves. Use WiPay's test card details on the next page."
+    : "Card details are entered on WiPay's secure page, never on this site.";
+  $("#payQty").value = 1; $("#payTotal").textContent = money(payTotal().total);
+  if (typeof payDlg.showModal === "function") payDlg.showModal(); else payDlg.setAttribute("open","");
+  $("#payEmail").focus();
+}
+$("#payQty").oninput = () => { if (payItem) $("#payTotal").textContent = money(payTotal().total); };
+$("#payCancel").onclick = () => payDlg.close();
+$("#payForm").onsubmit = e => {
+  e.preventDefault();
+  const w = CONFIG.wipay, email = $("#payEmail").value.trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 50) return toast("Please enter a valid email for your receipt.");
+  const {q, total} = payTotal();
+  const cc = w.countryCode.toLowerCase();
+  const host = w.environment === "sandbox" ? cc + "sb" : cc;
+  const back = w.responseUrl || (location.origin + location.pathname);
+  if (!/^https:\/\//.test(back)) return toast("Set CONFIG.wipay.responseUrl to your public https page address before testing from a local file.");
+  const oid = "DP" + Date.now().toString(36).toUpperCase();
+  const fields = {
+    account_number: w.accountNumber, avs: "0", country_code: w.countryCode, currency: w.currency,
+    data: JSON.stringify({item: payItem.name, qty: q}), environment: w.environment, fee_structure: w.feeStructure,
+    method: "credit_card_co", order_id: oid, origin: w.origin, response_url: back,
+    total: total.toFixed(2), email
+  };
+  const f = document.createElement("form");
+  f.method = "POST"; f.action = "https://" + host + ".wipayfinancial.com/plugins/payments/request";
+  Object.entries(fields).forEach(([k,v]) => { const i = document.createElement("input"); i.type = "hidden"; i.name = k; i.value = v; f.appendChild(i); });
+  document.body.appendChild(f); $("#payGo").disabled = true; $("#payGo").textContent = "Opening secure checkout…"; f.submit();
+};
+/* returning from WiPay: show the outcome (display only; confirm payments on a server with the hash) */
+(() => {
+  const q = new URLSearchParams(location.search);
+  if (!q.has("transaction_id") && !q.has("status")) return;
+  const st = (q.get("status") || "").toLowerCase();
+  history.replaceState(null, "", location.pathname + location.hash);
+  setTimeout(() => toast(st === "success"
+    ? "Thank you! Your payment went through" + (CONFIG.wipay.environment === "sandbox" ? " (sandbox test)." : ".")
+    : "Your payment wasn't completed. You haven't been charged."), 600);
+})();
 
 /* scroll reveal — one observer, unobserves after firing */
 const io = new IntersectionObserver((es) => es.forEach(e => {
